@@ -1,0 +1,12 @@
+# Binaries
+main
+main.exe
+
+# Environment Variables (NEVER PUSH THESE)
+.env
+
+# Docker
+postgres_data/
+
+# OS junk
+.DS_Store
