@@ -7,4 +7,5 @@ type UrlDbModel struct {
 	Url       string    `json:"url"`
 	ShortCode string    `json:"shortCode"`
 	CreatedAt time.Time `json:"createdAt"`
+	UserID    int       `json:"-"`
 }

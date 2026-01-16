@@ -5,7 +5,10 @@ import (
 	"fmt"
 	"math/rand/v2"
 	"net/http"
+	"strings"
 	"time"
+
+	"url_shortner/internal/middleware"
 
 	"github.com/go-chi/chi/v5"
 )
@@ -36,11 +39,17 @@ func (h *Handler) AddUrl(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Invalid Format data", http.StatusBadRequest)
 		return
 	}
+
+	if !strings.HasPrefix(reqData.Url, "http://") && !strings.HasPrefix(reqData.Url, "https://") {
+		reqData.Url = "http://" + reqData.Url
+	}
+	userID := r.Context().Value(middleware.UserIDKey).(int)
 	code := generateShortCode()
 	model := UrlDbModel{
 		Url:       reqData.Url,
 		ShortCode: code,
 		CreatedAt: time.Now(),
+		UserID:    userID,
 	}
 
 	if err := h.Repo.Add(r.Context(), model); err != nil {
@@ -53,6 +62,20 @@ func (h *Handler) AddUrl(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(response)
+}
+
+func (h *Handler) GetMyUrls(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	userID := r.Context().Value(middleware.UserIDKey).(int)
+
+	urls, err := h.Repo.GetByUser(r.Context(), userID)
+	if err != nil {
+		http.Error(w, "Failed to fetch URLs", http.StatusInternalServerError)
+		return
+	}
+
+	json.NewEncoder(w).Encode(urls)
 }
 
 func generateShortCode() string {
