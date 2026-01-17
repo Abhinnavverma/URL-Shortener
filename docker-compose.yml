@@ -1,9 +1,27 @@
 version: '3.8'
 
 services:
+  api:
+    build: .               
+    container_name: urlShortner_api
+    restart: always
+    ports:
+      - "8080:8080"         
+    depends_on:
+      - db
+      - cache
+    environment:
+      - DB_HOST=db
+      - DB_PORT=5432
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_NAME=${DB_NAME}
+      - JWT_SECRET=supersecretkey
+      - REDIS_ADDR=cache:6379
+
   db:
     image: postgres:16-alpine
-    container_name: urlShortner
+    container_name: urlShortner_db
     restart: always
     ports:
       - "${DB_PORT}:5432"
@@ -14,5 +32,14 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
+  cache:
+    image: redis:7-alpine
+    container_name: urlShortner_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
 volumes:
   postgres_data:
+  redis_data:

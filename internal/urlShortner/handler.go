@@ -10,22 +10,50 @@ import (
 
 	"url_shortner/internal/middleware"
 
+	"github.com/redis/go-redis/v9"
+
 	"github.com/go-chi/chi/v5"
 )
 
 type Handler struct {
-	Repo Repository
+	Repo  Repository
+	Redis *redis.Client
 }
 
 func (h *Handler) GetUrl(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-type", "application/json")
 	code := chi.URLParam(r, "code")
-	data, err := h.Repo.GetVal(r.Context(), code)
-	if err != nil {
-		http.Error(w, "Database Error", http.StatusInternalServerError)
+
+	cachedUrl, err := h.Redis.Get(r.Context(), code).Result()
+
+	if err == nil {
+		fmt.Println("⚡ Cache Hit!")
+		go h.Redis.Incr(r.Context(), "clicks:"+code)
+		http.Redirect(w, r, cachedUrl, http.StatusFound)
 		return
 	}
-	http.Redirect(w, r, data.Url, http.StatusFound)
+
+	if err != redis.Nil {
+		fmt.Println("⚠️ Redis is unreachable:", err)
+	}
+
+	fmt.Println("🐢 Cache Miss (Hitting DB)...")
+	u, err := h.Repo.GetVal(r.Context(), code)
+	if err != nil {
+		http.Error(w, "Url not found", http.StatusNotFound)
+		return
+	}
+
+	finalUrl := u.Url
+	if !strings.HasPrefix(finalUrl, "http://") && !strings.HasPrefix(finalUrl, "https://") {
+		finalUrl = "http://" + finalUrl
+	}
+
+	err = h.Redis.Set(r.Context(), code, finalUrl, time.Hour*6).Err()
+	if err != nil {
+		fmt.Println("⚠️ Failed to update cache:", err)
+	}
+	go h.Redis.Incr(r.Context(), "clicks:"+code)
+	http.Redirect(w, r, finalUrl, http.StatusFound)
 
 }
 
@@ -76,6 +104,22 @@ func (h *Handler) GetMyUrls(w http.ResponseWriter, r *http.Request) {
 	}
 
 	json.NewEncoder(w).Encode(urls)
+}
+
+func (h *Handler) GetAnalytics(w http.ResponseWriter, r *http.Request) {
+	code := chi.URLParam(r, "code")
+
+	clicks, err := h.Redis.Get(r.Context(), "clicks:"+code).Int64()
+
+	if err == redis.Nil {
+		clicks = 0
+	} else if err != nil {
+		http.Error(w, "Error fetching analytics", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]int64{"clicks": clicks})
 }
 
 func generateShortCode() string {

@@ -14,6 +14,8 @@ import (
 
 	"url_shortner/internal/middleware"
 
+	"github.com/redis/go-redis/v9"
+
 	"github.com/go-chi/chi/v5"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/joho/godotenv"
@@ -51,8 +53,22 @@ func main() {
 		os.Exit(1)
 	}
 	fmt.Println("Connected to the database!")
+	redisAddr := os.Getenv("REDIS_ADDR")
+	rdb := redis.NewClient(&redis.Options{
+		Addr:     redisAddr,
+		Password: "",
+		DB:       0,
+	})
+	if err := rdb.Ping(context.Background()).Err(); err != nil {
+		fmt.Printf("❌ Unable to connect to Redis: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Println("✅ Connected to Redis!")
 	repo := urlShortener.NewRepository(db)
-	handler := &urlShortener.Handler{Repo: repo}
+	handler := &urlShortener.Handler{
+		Repo:  repo,
+		Redis: rdb,
+	}
 
 	userRepo := user.NewRepository(db)
 	userHandler := &user.Handler{
@@ -65,6 +81,7 @@ func main() {
 	r.Get("/{code}", handler.GetUrl)
 	r.Post("/register", userHandler.Register)
 	r.Post("/login", userHandler.Login)
+	r.Get("/analytics/{code}", handler.GetAnalytics)
 	r.Group(func(r chi.Router) {
 		r.Use(middleware.JwtAuth(jwtSecret))
 
